@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { dbAll, dbGet, dbRun } = require('./database');
 const { authenticateToken, register, login } = require('./auth');
 require('dotenv').config();
@@ -11,10 +10,6 @@ const PORT = process.env.PORT || 5001;
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-// Serve static frontend files
-const frontendDistPath = path.join(__dirname, '../frontend/dist');
-app.use(express.static(frontendDistPath));
 
 // Log API requests
 app.use((req, res, next) => {
@@ -230,11 +225,6 @@ app.post('/api/vocabularies/:id/duplicate', authenticateToken, async (req, res) 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-// Serve index.html for all other routes (client-side routing)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
 // Start Server
