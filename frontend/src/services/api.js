@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+const API_BASE =
+  import.meta.env.MODE === "development"
+    ? "http://localhost:5001/api"
+    : "https://vocab-vault-1.onrender.com/api";
 
 let authToken = localStorage.getItem('vocab_vault_token') || null;
 
