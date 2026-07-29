@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { dbAll, dbGet, dbRun } = require('./database');
 const { authenticateToken, register, login } = require('./auth');
 require('dotenv').config();
@@ -9,12 +8,16 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: [
+    "http://localhost:5173", 
+    "https://vocab-vault-git-main-harsh31415926s-projects.vercel.app",
+    "https://vocab-vault-lzvf7prra-harsh31415926s-projects.vercel.app"
+  ],
+  credentials: true
+}));
 
-// Serve static frontend files
-const frontendDistPath = path.join(__dirname, '../frontend/dist');
-app.use(express.static(frontendDistPath));
+app.use(express.json());
 
 // Log API requests
 app.use((req, res, next) => {
@@ -22,13 +25,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// Auth Routes
+// ==========================
+// AUTH ROUTES
+// ==========================
+
 app.post('/api/auth/register', register);
 app.post('/api/auth/login', login);
 
-// Vocab Helpers
+// ==========================
+// HELPERS
+// ==========================
+
 const parseVocabRow = (row) => {
   if (!row) return null;
+
   try {
     return {
       ...row,
@@ -38,7 +48,8 @@ const parseVocabRow = (row) => {
       tags: row.tags ? JSON.parse(row.tags) : []
     };
   } catch (err) {
-    console.error('Failed to parse vocab row JSON fields:', err);
+    console.error(err);
+
     return {
       ...row,
       is_favorite: row.is_favorite === 1,
@@ -49,9 +60,11 @@ const parseVocabRow = (row) => {
   }
 };
 
-// Vocab Routes (All protected by authenticateToken)
+// ==========================
+// VOCAB ROUTES
+// ==========================
 
-// 1. Get all vocabularies with search & filter functionality
+// Get all vocabularies
 app.get('/api/vocabularies', authenticateToken, async (req, res) => {
   const userId = req.user.userId;
   const { search, favorite, tag, limit, offset } = req.query;
@@ -65,176 +78,230 @@ app.get('/api/vocabularies', authenticateToken, async (req, res) => {
 
   if (tag) {
     query += ' AND tags LIKE ?';
-    params.push(`%"${tag}"%`); // Search inside JSON string array format
+    params.push(`%"${tag}"%`);
   }
 
   if (search) {
-    query += ' AND (word LIKE ? OR meaning LIKE ? OR synonyms LIKE ? OR notes LIKE ? OR tags LIKE ?)';
-    const searchParam = `%${search}%`;
-    params.push(searchParam, searchParam, searchParam, searchParam, searchParam);
+    query +=
+      ' AND (word LIKE ? OR meaning LIKE ? OR synonyms LIKE ? OR notes LIKE ? OR tags LIKE ?)';
+
+    const s = `%${search}%`;
+
+    params.push(s, s, s, s, s);
   }
 
-  // Order by created_at DESC (newest first)
   query += ' ORDER BY created_at DESC';
 
   if (limit) {
     query += ' LIMIT ?';
-    params.push(parseInt(limit, 10));
+    params.push(parseInt(limit));
+
     if (offset) {
       query += ' OFFSET ?';
-      params.push(parseInt(offset, 10));
+      params.push(parseInt(offset));
     }
   }
 
   try {
     const rows = await dbAll(query, params);
-    const vocabularies = rows.map(parseVocabRow);
-    return res.json(vocabularies);
-  } catch (error) {
-    console.error('Error fetching vocabularies:', error);
-    return res.status(500).json({ error: 'Failed to fetch vocabularies.' });
+    res.json(rows.map(parseVocabRow));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch vocabularies.' });
   }
 });
 
-// 2. Get single vocabulary card
+// Get one vocabulary
 app.get('/api/vocabularies/:id', authenticateToken, async (req, res) => {
-  const userId = req.user.userId;
-  const vocabId = req.params.id;
-
   try {
-    const row = await dbGet('SELECT * FROM vocabularies WHERE id = ? AND user_id = ?', [vocabId, userId]);
+    const row = await dbGet(
+      'SELECT * FROM vocabularies WHERE id=? AND user_id=?',
+      [req.params.id, req.user.userId]
+    );
+
     if (!row) {
-      return res.status(404).json({ error: 'Vocabulary card not found.' });
+      return res.status(404).json({ error: 'Vocabulary not found.' });
     }
-    return res.json(parseVocabRow(row));
-  } catch (error) {
-    console.error('Error fetching vocabulary details:', error);
-    return res.status(500).json({ error: 'Failed to fetch vocabulary details.' });
+
+    res.json(parseVocabRow(row));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed.' });
   }
 });
 
-// 3. Create a new vocabulary card
+// Create vocabulary
 app.post('/api/vocabularies', authenticateToken, async (req, res) => {
-  const userId = req.user.userId;
-  const { word, meaning, synonyms, examples, tags, notes, is_favorite } = req.body;
+  const {
+    word,
+    meaning,
+    synonyms,
+    examples,
+    tags,
+    notes,
+    is_favorite
+  } = req.body;
 
   if (!word || !meaning) {
-    return res.status(400).json({ error: 'Word and meaning are required fields.' });
+    return res.status(400).json({
+      error: 'Word and meaning are required.'
+    });
   }
-
-  const synonymsStr = JSON.stringify(synonyms || []);
-  const examplesStr = JSON.stringify(examples || []);
-  const tagsStr = JSON.stringify(tags || []);
-  const favVal = is_favorite ? 1 : 0;
 
   try {
     const result = await dbRun(
-      `INSERT INTO vocabularies (user_id, word, meaning, synonyms, examples, tags, notes, is_favorite, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [userId, word.trim(), meaning.trim(), synonymsStr, examplesStr, tagsStr, notes || '', favVal]
+      `INSERT INTO vocabularies
+      (user_id,word,meaning,synonyms,examples,tags,notes,is_favorite,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+      [
+        req.user.userId,
+        word.trim(),
+        meaning.trim(),
+        JSON.stringify(synonyms || []),
+        JSON.stringify(examples || []),
+        JSON.stringify(tags || []),
+        notes || '',
+        is_favorite ? 1 : 0
+      ]
     );
 
-    const newVocab = await dbGet('SELECT * FROM vocabularies WHERE id = ?', [result.id]);
-    return res.status(201).json(parseVocabRow(newVocab));
-  } catch (error) {
-    console.error('Error creating vocabulary card:', error);
-    return res.status(500).json({ error: 'Failed to create vocabulary card.' });
+    const vocab = await dbGet(
+      'SELECT * FROM vocabularies WHERE id=?',
+      [result.id]
+    );
+
+    res.status(201).json(parseVocabRow(vocab));
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed.' });
   }
 });
 
-// 4. Update vocabulary card
+// Update vocabulary
 app.put('/api/vocabularies/:id', authenticateToken, async (req, res) => {
-  const userId = req.user.userId;
-  const vocabId = req.params.id;
-  const { word, meaning, synonyms, examples, tags, notes, is_favorite } = req.body;
-
-  if (!word || !meaning) {
-    return res.status(400).json({ error: 'Word and meaning are required fields.' });
-  }
-
-  const synonymsStr = JSON.stringify(synonyms || []);
-  const examplesStr = JSON.stringify(examples || []);
-  const tagsStr = JSON.stringify(tags || []);
-  const favVal = is_favorite ? 1 : 0;
+  const {
+    word,
+    meaning,
+    synonyms,
+    examples,
+    tags,
+    notes,
+    is_favorite
+  } = req.body;
 
   try {
-    // Verify ownership
-    const existing = await dbGet('SELECT * FROM vocabularies WHERE id = ? AND user_id = ?', [vocabId, userId]);
+
+    const existing = await dbGet(
+      'SELECT * FROM vocabularies WHERE id=? AND user_id=?',
+      [req.params.id, req.user.userId]
+    );
+
     if (!existing) {
-      return res.status(404).json({ error: 'Vocabulary card not found or unauthorized.' });
+      return res.status(404).json({ error: 'Vocabulary not found.' });
     }
 
     await dbRun(
       `UPDATE vocabularies
-       SET word = ?, meaning = ?, synonyms = ?, examples = ?, tags = ?, notes = ?, is_favorite = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND user_id = ?`,
-      [word.trim(), meaning.trim(), synonymsStr, examplesStr, tagsStr, notes || '', favVal, vocabId, userId]
+       SET word=?,meaning=?,synonyms=?,examples=?,tags=?,notes=?,is_favorite=?,updated_at=CURRENT_TIMESTAMP
+       WHERE id=? AND user_id=?`,
+      [
+        word.trim(),
+        meaning.trim(),
+        JSON.stringify(synonyms || []),
+        JSON.stringify(examples || []),
+        JSON.stringify(tags || []),
+        notes || '',
+        is_favorite ? 1 : 0,
+        req.params.id,
+        req.user.userId
+      ]
     );
 
-    const updated = await dbGet('SELECT * FROM vocabularies WHERE id = ?', [vocabId]);
-    return res.json(parseVocabRow(updated));
-  } catch (error) {
-    console.error('Error updating vocabulary card:', error);
-    return res.status(500).json({ error: 'Failed to update vocabulary card.' });
+    const updated = await dbGet(
+      'SELECT * FROM vocabularies WHERE id=?',
+      [req.params.id]
+    );
+
+    res.json(parseVocabRow(updated));
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed.' });
   }
 });
 
-// 5. Delete vocabulary card
+// Delete vocabulary
 app.delete('/api/vocabularies/:id', authenticateToken, async (req, res) => {
-  const userId = req.user.userId;
-  const vocabId = req.params.id;
 
   try {
-    // Verify ownership
-    const existing = await dbGet('SELECT * FROM vocabularies WHERE id = ? AND user_id = ?', [vocabId, userId]);
-    if (!existing) {
-      return res.status(404).json({ error: 'Vocabulary card not found or unauthorized.' });
-    }
 
-    await dbRun('DELETE FROM vocabularies WHERE id = ? AND user_id = ?', [vocabId, userId]);
-    return res.json({ message: 'Vocabulary card deleted successfully.', id: parseInt(vocabId, 10) });
-  } catch (error) {
-    console.error('Error deleting vocabulary card:', error);
-    return res.status(500).json({ error: 'Failed to delete vocabulary card.' });
+    await dbRun(
+      'DELETE FROM vocabularies WHERE id=? AND user_id=?',
+      [req.params.id, req.user.userId]
+    );
+
+    res.json({
+      message: 'Deleted successfully.'
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed.' });
   }
+
 });
 
-// 6. Duplicate vocabulary card
+// Duplicate vocabulary
 app.post('/api/vocabularies/:id/duplicate', authenticateToken, async (req, res) => {
-  const userId = req.user.userId;
-  const vocabId = req.params.id;
 
   try {
-    // Verify ownership and get source card
-    const source = await dbGet('SELECT * FROM vocabularies WHERE id = ? AND user_id = ?', [vocabId, userId]);
-    if (!source) {
-      return res.status(404).json({ error: 'Vocabulary card not found or unauthorized.' });
-    }
 
-    const duplicatedWord = `${source.word} (Copy)`;
+    const row = await dbGet(
+      'SELECT * FROM vocabularies WHERE id=? AND user_id=?',
+      [req.params.id, req.user.userId]
+    );
+
+    if (!row) {
+      return res.status(404).json({ error: 'Vocabulary not found.' });
+    }
 
     const result = await dbRun(
-      `INSERT INTO vocabularies (user_id, word, meaning, synonyms, examples, tags, notes, is_favorite, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [userId, duplicatedWord, source.meaning, source.synonyms, source.examples, source.tags, source.notes, source.is_favorite]
+      `INSERT INTO vocabularies
+      (user_id,word,meaning,synonyms,examples,tags,notes,is_favorite,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+      [
+        req.user.userId,
+        row.word + ' (Copy)',
+        row.meaning,
+        row.synonyms,
+        row.examples,
+        row.tags,
+        row.notes,
+        row.is_favorite
+      ]
     );
 
-    const duplicated = await dbGet('SELECT * FROM vocabularies WHERE id = ?', [result.id]);
-    return res.status(201).json(parseVocabRow(duplicated));
-  } catch (error) {
-    console.error('Error duplicating vocabulary card:', error);
-    return res.status(500).json({ error: 'Failed to duplicate vocabulary card.' });
+    const duplicated = await dbGet(
+      'SELECT * FROM vocabularies WHERE id=?',
+      [result.id]
+    );
+
+    res.status(201).json(parseVocabRow(duplicated));
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed.' });
   }
+
 });
 
-// Health check endpoint
+// Health Check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-// Serve index.html for all other routes (client-side routing)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Start Server
