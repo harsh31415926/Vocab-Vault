@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend API for Personal Vocabulary Vault",
   "main": "server.js",
+  "engines": {
+    "node": "20.x"
+  },
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
