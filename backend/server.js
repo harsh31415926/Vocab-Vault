@@ -10,9 +10,9 @@ const PORT = process.env.PORT || 5001;
 // Middleware
 app.use(cors({
   origin: [
-    "http://localhost:5173", 
-    "https://vocab-vault-git-main-harsh31415926s-projects.vercel.app",
-    "https://vocab-vault-lzvf7prra-harsh31415926s-projects.vercel.app"
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://vocab-vault-frontend.vercel.app"
   ],
   credentials: true
 }));
