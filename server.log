@@ -1,0 +1,37 @@
+
+> vocab-vault-project@1.0.0 start
+> npm run build --prefix frontend && npm run start --prefix backend
+
+
+> frontend@0.0.0 build
+> vite build
+
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 1792 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.56 kB │ gzip:  0.36 kB
+dist/assets/index-shVwDat5.css   18.87 kB │ gzip:  3.56 kB
+dist/assets/index-EMPIS4zH.js   236.05 kB │ gzip: 72.68 kB
+
+✓ built in 97ms
+
+> vocab-vault-backend@1.0.0 start
+> node server.js
+
+Vocab Vault backend server listening on port 5001
+Connected to SQLite database at: /Users/harshsharma/Desktop/Orator/Vocab/backend/vocab.db
+2026-07-29T18:05:38.513Z - GET /api/health
+2026-07-29T18:06:04.144Z - GET /favicon.ico
+2026-07-29T18:06:14.922Z - POST /api/auth/login
+2026-07-29T18:06:15.021Z - GET /api/vocabularies
+2026-07-29T18:06:51.104Z - POST /api/auth/login
+2026-07-29T18:06:51.200Z - GET /api/vocabularies
+2026-07-31T13:41:44.226Z - GET /api/vocabularies
+2026-07-31T13:41:44.237Z - GET /api/vocabularies
+2026-07-31T13:42:43.042Z - POST /api/vocabularies
+2026-07-31T13:43:25.907Z - PUT /api/vocabularies/5
+2026-07-31T13:43:50.129Z - GET /api/vocabularies
+2026-07-31T13:43:50.130Z - GET /api/vocabularies
+2026-07-31T13:47:11.666Z - GET /api/vocabularies
+2026-07-31T13:47:11.667Z - GET /api/vocabularies
