@@ -300,7 +300,9 @@ app.post('/api/vocabularies/:id/duplicate', authenticateToken, async (req, res) 
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    database: process.env.DATABASE_URL ? 'postgresql' : 'sqlite',
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
