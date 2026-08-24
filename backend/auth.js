@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'vocab_vault_secure_token_secret_key_2026';
 
-// Middleware to verify JWT token
+// Middleware to verify JWT token and ensure it maps to a real database user.
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -14,12 +14,35 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired token.' });
     }
-    req.user = decoded;
-    next();
+
+    if (!decoded || !decoded.userId || !decoded.email) {
+      return res.status(401).json({ error: 'Invalid session. Please log in again.' });
+    }
+
+    try {
+      const normalizedEmail = decoded.email.toLowerCase().trim();
+      const user = await dbGet(
+        'SELECT id, email FROM users WHERE id = ? AND email = ?',
+        [decoded.userId, normalizedEmail]
+      );
+
+      if (!user) {
+        return res.status(401).json({ error: 'Session user does not match the database. Please log in again.' });
+      }
+
+      req.user = {
+        userId: user.id,
+        email: user.email
+      };
+      next();
+    } catch (error) {
+      console.error('Authentication lookup error:', error);
+      return res.status(500).json({ error: 'Failed to verify session.' });
+    }
   });
 };
 
