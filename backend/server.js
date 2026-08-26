@@ -111,6 +111,90 @@ app.get('/api/vocabularies', authenticateToken, async (req, res) => {
   }
 });
 
+// Create multiple vocabularies in one authenticated operation
+app.post('/api/vocabularies/bulk', authenticateToken, async (req, res) => {
+  const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+
+  if (!entries.length) {
+    return res.status(400).json({ error: 'At least one vocabulary entry is required.' });
+  }
+
+  const normalizedEntries = entries.map((entry) => ({
+    word: typeof entry?.word === 'string' ? entry.word.trim() : '',
+    meaning: typeof entry?.meaning === 'string' ? entry.meaning.trim() : '',
+    synonyms: Array.isArray(entry?.synonyms) ? entry.synonyms : [],
+    examples: Array.isArray(entry?.examples) ? entry.examples : [],
+    tags: Array.isArray(entry?.tags) ? entry.tags : [],
+    notes: typeof entry?.notes === 'string' ? entry.notes.trim() : '',
+    is_favorite: entry?.is_favorite ? 1 : 0
+  }));
+
+  const invalidIndex = normalizedEntries.findIndex((entry) => !entry.word || !entry.meaning);
+  if (invalidIndex !== -1) {
+    return res.status(400).json({
+      error: `Entry ${invalidIndex + 1} requires both a word and a meaning.`
+    });
+  }
+
+  try {
+    const createdIds = [];
+    for (const entry of normalizedEntries) {
+      const result = await dbRun(
+        `INSERT INTO vocabularies
+        (user_id,word,meaning,synonyms,examples,tags,notes,is_favorite,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [
+          req.user.userId,
+          entry.word,
+          entry.meaning,
+          JSON.stringify(entry.synonyms),
+          JSON.stringify(entry.examples),
+          JSON.stringify(entry.tags),
+          entry.notes,
+          entry.is_favorite
+        ]
+      );
+      createdIds.push(result.id);
+    }
+
+    const createdRows = await dbAll(
+      `SELECT * FROM vocabularies WHERE user_id=? AND id IN (${createdIds.map(() => '?').join(',')}) ORDER BY created_at DESC, id DESC`,
+      [req.user.userId, ...createdIds]
+    );
+
+    return res.status(201).json(createdRows.map(parseVocabRow));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to create vocabulary entries.' });
+  }
+});
+
+// Delete multiple vocabularies, limited to the authenticated owner
+app.delete('/api/vocabularies/bulk', authenticateToken, async (req, res) => {
+  const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids = [...new Set(rawIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+
+  if (!ids.length) {
+    return res.status(400).json({ error: 'At least one valid vocabulary id is required.' });
+  }
+
+  try {
+    const result = await dbRun(
+      `DELETE FROM vocabularies WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')})`,
+      [req.user.userId, ...ids]
+    );
+
+    return res.json({
+      message: 'Vocabularies deleted successfully.',
+      deletedCount: result.changes,
+      ids
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to delete vocabulary entries.' });
+  }
+});
+
 // Get one vocabulary
 app.get('/api/vocabularies/:id', authenticateToken, async (req, res) => {
   try {
